@@ -1,8 +1,9 @@
 use axum::{Router, routing::{ post}};
 
-use crate::controllers::user_controller;
+use crate::controllers::user_controller::insert_user;
+
 
 pub fn routes() -> Router{
     Router::new()
-        .route("/user", post(user_controller::insert_user))
+        .route("/user", post(insert_user))
 }
