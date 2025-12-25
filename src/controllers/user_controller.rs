@@ -18,7 +18,7 @@ pub async fn insert_user(payload: Json<UserInsert>) -> Response  {
         .bind(name)
         .bind(password_hash)
         .execute(&pool).await;
-    response_query(result, "Berhasil memasukan data").await.into_response()
+    response_query(result, "Berhasil memasukan data", StatusCode::CREATED).await.into_response()
 }
 
 pub async fn get_all_user()-> impl IntoResponse {

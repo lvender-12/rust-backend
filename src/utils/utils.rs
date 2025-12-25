@@ -3,10 +3,10 @@ use axum::response::IntoResponse;
 use http::StatusCode;
 use sqlx::{Error, mysql::MySqlQueryResult};
 
-pub async fn response_query(result: Result<MySqlQueryResult, Error>,success_msg:&str) -> impl IntoResponse{
+pub async fn response_query(result: Result<MySqlQueryResult, Error>,success_msg:&str, status_code: StatusCode) -> impl IntoResponse{
     match result {
         Ok(query)=>(
-            StatusCode::OK,
+            status_code,
             format!("{} affected rows:{}", success_msg, query.rows_affected())
         ),
         Err(e)=>(
