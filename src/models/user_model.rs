@@ -3,10 +3,12 @@ use validator::Validate;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 
-#[derive( FromRow, Debug, Deserialize, Serialize)]
+#[derive( FromRow, Debug, Deserialize, Serialize, Validate)]
 pub struct User{
     pub id: u64,
     pub name: String,
+    #[validate(email(message = "Format email tidak valid"))]
+    pub email : String,
     #[allow(dead_code)]
     #[serde(skip_serializing)]
     password: String,
@@ -16,10 +18,12 @@ pub struct User{
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Deserialize, Validate, Debug,Serialize)]
 pub struct UserInsert{
     #[validate(length(min = 3, message = "Nama minimal 3 karakter"))]
     pub name: String,
+    #[validate(custom(function = "crate::utils::utils::validate_email_tld"))]
+    pub email : String,
     #[validate(length(min = 5, message = "Password minimal 5 karakter"))]
     pub password: String,
 }

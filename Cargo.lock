@@ -181,6 +181,7 @@ dependencies = [
  "chrono",
  "futures",
  "http",
+ "rand 0.8.5",
  "rand_core 0.9.3",
  "serde",
  "serde_json",

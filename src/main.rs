@@ -6,6 +6,7 @@ mod controllers;
 mod configs;
 mod models;
 mod utils;
+mod tests;
 
 #[tokio::main]
 async fn main() {
