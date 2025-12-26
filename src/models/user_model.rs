@@ -27,3 +27,16 @@ pub struct UserInsert{
     #[validate(length(min = 5, message = "Password minimal 5 karakter"))]
     pub password: String,
 }
+
+#[derive(Deserialize, Debug,Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SeacrhBy {
+    Name,
+    Email,
+}
+
+#[derive(Deserialize, Validate, Debug,Serialize)]
+pub struct SearchQuery {
+    pub by: SeacrhBy,
+    pub value: String,
+}
