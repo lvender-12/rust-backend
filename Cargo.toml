@@ -10,6 +10,7 @@ axum = { version = "0.8.8", features = ["multipart"] }
 axum-extra = { version = "0.12.3", features = ["cookie"] }
 axum-test = "18.4.1"
 chrono = { version = "0.4.42", features = ["serde"] }
+config = "0.15.19"
 futures = "0.3.31"
 http = "1.4.0"
 rand = "0.8"
