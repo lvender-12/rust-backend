@@ -1,3 +1,6 @@
+server:
+  api_key: your_api_key
+
 database:
   host: your_db_host
   port: your_db_port

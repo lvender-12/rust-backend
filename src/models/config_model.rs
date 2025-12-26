@@ -10,6 +10,13 @@ pub struct DatabaseConfig{
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ServerConfig {
+    pub api_key: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AppConfig {
     pub database: DatabaseConfig,
+    pub server: ServerConfig,
 }
+    

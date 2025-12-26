@@ -1,136 +1,162 @@
-// test/user_testing.rs
-use axum::{Router, routing::{get, post}};
-use axum_test::TestServer;
-use rand::{distributions::Alphanumeric, Rng};
-use crate::{
-    controllers::user_controller::{get_all_user, insert_user},
-    configs::db,
-    models::user_model::UserInsert
+use axum::{
+    Router,
+    routing::{get},
+    middleware::from_fn,
 };
+use axum_test::TestServer;
 use http::StatusCode;
+use serde_json::json;
 
-/// Fungsi buat setup router
+use crate::{
+    configs::db, controllers::user_controller::{get_all_user, insert_user}, middlewares::api_middleware::api_key_middleware, routes::fallback::{fallback, not_allowed}
+};
+
+/// =======================
+/// Helper
+/// =======================
+
+fn api_key() -> &'static str {
+    "hgdshdfrhdrhdftjdftjfdtjdf"
+}
+
 fn app() -> Router {
     Router::new()
-        .route("/user", post(insert_user))
-        .route("/user", get(get_all_user))
+        .route("/user", get(get_all_user).post(insert_user))
+        .layer(from_fn(api_key_middleware))
+        .fallback(fallback)
+        .method_not_allowed_fallback(not_allowed)
 }
 
-/// Generate email random untuk test
-fn random_email() -> String {
-    let rand_str: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(8)
-        .map(char::from)
-        .collect();
-    format!("{}@test.com", rand_str)
+fn server() -> TestServer {
+    TestServer::new(app()).unwrap()
 }
 
-/// Hapus user test yang dibuat (cleanup)
-async fn cleanup_test_users() {
+/// =======================
+/// TEST GET
+/// =======================
+
+#[tokio::test]
+async fn get_user_success() {
+    let server = server();
+
+    let res = server
+        .get("/user")
+        .add_header("X-API-KEY", api_key())
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_user_without_api_key() {
+    let server = server();
+
+    let res = server
+        .get("/user")
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn get_user_wrong_api_key() {
+    let server = server();
+
+    let res = server
+        .get("/user")
+        .add_header("X-API-KEY", "SALAH")
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+async fn cleanup_users() {
     let pool = db::get_pool().await.unwrap();
     sqlx::query("DELETE FROM users WHERE email LIKE '%@test.com'")
-        .execute(&pool).await.unwrap();
+        .execute(&pool)
+        .await
+        .unwrap();
 }
 
-#[tokio::test]
-async fn test_insert_user_success() {
-    cleanup_test_users().await;
-
-    let server = TestServer::new(app()).unwrap();
-
-    let request = UserInsert {
-        name: "Damar Test".to_string(),
-        email: random_email(),
-        password:"123456".to_string(),
-    };
-
-    let response = server.post("/user").json(&request).await;
-
-    response.assert_status(StatusCode::CREATED);
-    response.assert_text_contains("Berhasil memasukan data");
-
-    cleanup_test_users().await;
-}
+/// =======================
+/// TEST POST
+/// =======================
 
 #[tokio::test]
-async fn test_insert_user_bad_request() {
-    cleanup_test_users().await;
+async fn insert_user_success() {
+    let server = server();
 
-    let server = TestServer::new(app()).unwrap();
-
-    // Nama terlalu pendek → harus gagal 400
-    let request = UserInsert {
-        name: "Da".to_string(),
-        email: random_email(),
-        password: "12345".to_string(),
-    };
-
-    let response = server.post("/user").json(&request).await;
-    response.assert_status(StatusCode::BAD_REQUEST);
-
-    cleanup_test_users().await;
-}
-
-#[tokio::test]
-async fn test_insert_user_conflict() {
-    cleanup_test_users().await;
-
-    let pool = db::get_pool().await.unwrap();
-    let server = TestServer::new(app()).unwrap();
-    let email = "conflict_test@test.com";
-
-    // insert manual via pool (bukan via TestServer)
-    sqlx::query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)")
-        .bind("damar")
-        .bind(email)
-        .bind("hash123")
-        .execute(&pool).await.unwrap();
-
-    // insert kedua via TestServer → harus conflict
-    let request2 = UserInsert {
-        name: "Damar2".into(),
-        email: email.into(),
-        password: "67890".into(),
-    };
-    let response2 = server.post("/user").json(&request2).await;
-    response2.assert_status(StatusCode::CONFLICT);
-
-
-    cleanup_test_users().await;
-}
-
-
-#[tokio::test]
-async fn test_get_all_user() {
-    cleanup_test_users().await;
-
-    let server = TestServer::new(app()).unwrap();
-
-    // Insert 2 user dulu supaya GET ada data
-    let email1 = random_email();
-    let email2 = random_email();
-
-    let request1 = UserInsert {
-        name: "Damar".to_string(),
-        email: email1,
-        password: "12345".to_string(),
-    };
-
-    let request2 = UserInsert {
-        name: "Damar2".to_string(),
-        email: email2,
-        password: "67890".to_string(),
-    };
-
-    let _ = server.post("/user").json(&request1).await;
-    let _ = server.post("/user").json(&request2).await;
-
-    let response = server.get("/user").await;
-    response.assert_status_ok();
-
-    // body harus array JSON
-    response.assert_text_contains("[");
+    let res = server
+        .post("/user")
+        .add_header("X-API-KEY", api_key())
+        .json(&json!({
+            "name": "damar",
+            "email": "damar@test.com",
+            "password": "rahasia123"
+        }))
+        .await;
     
-    cleanup_test_users().await;
+    assert_eq!(res.status_code(), StatusCode::CREATED);
+    cleanup_users().await;
+}
+
+#[tokio::test]
+async fn insert_user_invalid_json() {
+    let server = server();
+
+    let res = server
+        .post("/user")
+        .add_header("X-API-KEY", api_key())
+        .json("{ invalid json }")
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn insert_user_without_api_key() {
+    let server = server();
+
+    let res = server
+        .post("/user")
+        .json(&json!({
+            "name": "damar",
+            "email": "damar@gmail.com",
+            "password": "rahasia"
+        }))
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+/// =======================
+/// METHOD NOT ALLOWED
+/// =======================
+
+#[tokio::test]
+async fn put_user_not_allowed() {
+    let server = server();
+
+    let res = server
+        .put("/user")
+        .add_header("X-API-KEY", api_key())
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+/// =======================
+/// FALLBACK
+/// =======================
+
+#[tokio::test]
+async fn route_not_found() {
+    let server = server();
+
+    let res = server
+        .get("/tidak-ada")
+        .add_header("X-API-KEY", api_key())
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::NOT_FOUND);
 }

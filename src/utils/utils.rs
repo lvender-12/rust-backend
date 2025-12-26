@@ -2,9 +2,12 @@ use std::borrow::Cow;
 
 use argon2::{Argon2, password_hash::{SaltString, rand_core::OsRng, PasswordHasher}};
 use axum::response::IntoResponse;
+use config::{Config, File, FileFormat};
 use http::StatusCode;
 use sqlx::{Error, mysql::MySqlQueryResult};
 use validator::ValidationError;
+
+use crate::models::config_model::AppConfig;
 
 //untuk mengubah response dari query menjadi response axum
 pub async fn response_query(result: Result<MySqlQueryResult, Error>,success_msg:&str, status_code: StatusCode) -> impl IntoResponse{
@@ -66,4 +69,13 @@ pub fn validate_email_tld(email:&str)->Result<(), ValidationError>{
 
 
     Ok(())
+}
+
+pub fn load_config() -> AppConfig {
+    Config::builder()
+        .add_source(File::new("config.yaml", FileFormat::Yaml))
+        .build()
+        .unwrap()
+        .try_deserialize()
+        .unwrap()
 }

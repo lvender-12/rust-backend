@@ -7,6 +7,7 @@ mod configs;
 mod models;
 mod utils;
 mod tests;
+mod middlewares;
 
 #[tokio::main]
 async fn main() {

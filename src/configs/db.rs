@@ -1,9 +1,6 @@
 use std::time::Duration;
-
-use config::{Case, Config, Environment, File, FileFormat};
 use sqlx::{Error, MySql, Pool, mysql::MySqlPoolOptions};
-
-use crate::models::database_config_model::{AppConfig};
+use crate::{ utils::utils::load_config};
 
 
 async fn create_pool(url: String) -> Result<Pool<MySql>, Error> {
@@ -17,13 +14,8 @@ async fn create_pool(url: String) -> Result<Pool<MySql>, Error> {
 }
 
 pub async  fn get_pool()-> Result<Pool<MySql>, Error>{
-    let cfg = Config::builder()
-        .add_source(File::new("config.yaml", FileFormat::Yaml)) // override
-        .build()
-        .unwrap();
-
-    let app: AppConfig = cfg.try_deserialize().unwrap();
-    let db = app.database;
+    let cfg = load_config();
+    let db = cfg.database;
 
     let host = db.host;
     let port = db.port;

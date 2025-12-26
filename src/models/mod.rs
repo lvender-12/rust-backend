@@ -1,2 +1,2 @@
 pub mod user_model;
-pub mod database_config_model;
+pub mod config_model;
