@@ -1,55 +1,42 @@
-use axum::{Json, response::{IntoResponse, Response}};
+use axum::{Json, extract::Path};
 use http::{ StatusCode};
-use sqlx::{Error, mysql::MySqlQueryResult};
 use validator::Validate;
-use crate::{configs::db, models::user_model::{SearchQuery, User, UserInsert, SeacrhBy}, utils::utils::{check_email, hashing_password, response_query}};
+use crate::{configs::db, errors::app_error::AppError, models::user_model::{SeacrhBy, SearchQuery, User, UserInsert}, utils::utils::{check_email, hashing_password}};
 
-pub async fn get_all_user()-> impl IntoResponse {
-    let pool = db::get_pool().await.unwrap();
+pub async fn get_all_user()-> Result<(StatusCode, Json<Vec<User>>), AppError> {
+    let pool = db::get_pool().await?;
     let result= sqlx::query_as::<_, User>("SELECT * FROM users")
-        .fetch_all(&pool).await.unwrap();
+        .fetch_all(&pool).await?;
 
-    (StatusCode::OK, Json(result))
+    Ok((StatusCode::OK, Json(result)))
 }
 
-pub async fn insert_user(payload: Json<UserInsert>) -> Response  {
-    if let Err(errors) = payload.validate() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(errors),
-        ).into_response();
-    }
+pub async fn insert_user(payload: Json<UserInsert>) -> Result<(StatusCode,String), AppError> {
+    payload.validate().map_err(AppError::ValidationError)?;
 
-    let pool = db::get_pool().await.unwrap();
+    let pool = db::get_pool().await?;
 
     let name = payload.name.trim();
     let email = payload.email.trim();
-    let password_hash = hashing_password(&payload.password.trim()).await.unwrap();
+    let password_hash = hashing_password(&payload.password.trim()).await?;
 
-    if check_email(email).await.unwrap() {
-        return (
-            StatusCode::CONFLICT,
-            format!("Email {} sudah terdaftar", email)
-        ).into_response();
+    if check_email(email).await? {
+        return Err(AppError::Conflict);
     }
 
-    let result: Result<MySqlQueryResult, Error> = sqlx::query("INSERT INTO users (name, email, password) VALUE (?, ?, ?)")
+    sqlx::query("INSERT INTO users (name, email, password) VALUE (?, ?, ?)")
         .bind(name)
         .bind(email)
         .bind(password_hash)
-        .execute(&pool).await;
-    response_query(result, "Berhasil memasukan data", StatusCode::CREATED).await.into_response()
+        .execute(&pool).await?;
+    
+    Ok((StatusCode::CREATED, "User berhasil dibuat".to_string()))
 }
 
-pub async fn get_user(payload: Json<SearchQuery>) -> impl IntoResponse {
-     if let Err(errors) = payload.validate() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(errors),
-        ).into_response();
-    }
+pub async fn get_user(payload: Json<SearchQuery>) -> Result<(StatusCode, Json<Vec<User>>), AppError> {
+    payload.validate().map_err(AppError::ValidationError)?;
 
-    let pool = db::get_pool().await.unwrap();
+    let pool = db::get_pool().await?;
     let by = &payload.by;
     let value = format!("%{}%", payload.value.trim());
     let result_vec = sqlx::query_as::<_, User>
@@ -60,6 +47,20 @@ pub async fn get_user(payload: Json<SearchQuery>) -> impl IntoResponse {
         }
     )
     .bind(value)
-    .fetch_all(&pool).await.unwrap();
-    (StatusCode::OK, Json(result_vec)).into_response()
+    .fetch_all(&pool).await?;
+    Ok((StatusCode::OK, Json(result_vec)))
+}
+
+pub async fn delete_user(Path(user_email): Path<String>)-> Result<(StatusCode, Json<String>), AppError> {
+    let pool = db::get_pool().await?;
+    let result = sqlx::query("DELETE FROM users WHERE email = ?")
+        .bind(user_email)
+        .execute(&pool)
+        .await?;
+
+    if result.rows_affected() == 0{
+        return Err(AppError::NotFound);
+    }
+
+    Ok((StatusCode::NO_CONTENT, Json("User deleted successfully".to_string())))
 }

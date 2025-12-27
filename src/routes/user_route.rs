@@ -1,6 +1,6 @@
-use axum::{Router, middleware::from_fn, routing::{ get, post}};
+use axum::{Router, middleware::from_fn, routing::{ delete, get, post}};
 
-use crate::{controllers::user_controller::{get_all_user, get_user, insert_user}, middlewares::api_middleware::api_key_middleware, routes::fallback::{ fallback, not_allowed}};
+use crate::{controllers::user_controller::{delete_user, get_all_user, get_user, insert_user}, middlewares::api_middleware::api_key_middleware, routes::fallback::{ fallback, not_allowed}};
 
 
 pub fn routes() -> Router{
@@ -8,6 +8,7 @@ pub fn routes() -> Router{
         .route("/user", post(insert_user))
         .route("/user", get(get_all_user))
         .route("/user/search", post(get_user))
+        .route("/user/{user_email}", delete(delete_user))
         .layer(from_fn(api_key_middleware))
         .fallback(fallback)
         .method_not_allowed_fallback(not_allowed)

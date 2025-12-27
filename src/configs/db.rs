@@ -1,6 +1,6 @@
 use std::time::Duration;
 use sqlx::{Error, MySql, Pool, mysql::MySqlPoolOptions};
-use crate::{ utils::utils::load_config};
+use crate::{ errors::app_error::AppError, utils::utils::load_config};
 
 
 async fn create_pool(url: String) -> Result<Pool<MySql>, Error> {
@@ -13,8 +13,8 @@ async fn create_pool(url: String) -> Result<Pool<MySql>, Error> {
         .await
 }
 
-pub async  fn get_pool()-> Result<Pool<MySql>, Error>{
-    let cfg = load_config();
+pub async  fn get_pool()-> Result<Pool<MySql>, AppError>{
+    let cfg = load_config()?;
     let db = cfg.database;
 
     let host = db.host;
@@ -24,5 +24,5 @@ pub async  fn get_pool()-> Result<Pool<MySql>, Error>{
     let name = db.name;
 
     let database_url = format!("mysql://{}:{}@{}:{}/{}", user, password, host, port, name);
-    create_pool(database_url).await
+    Ok(create_pool(database_url).await?)
 }
