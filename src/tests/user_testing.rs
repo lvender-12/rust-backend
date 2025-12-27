@@ -4,13 +4,9 @@ use axum::{
 use axum_test::TestServer;
 use http::StatusCode;
 use serde_json::json;
-use std::collections::HashMap;
 
 use crate::{
-    configs::db,
-    controllers::user_controller::{delete_user, edit_user, get_all_user, get_user, get_user_edit, insert_user},
-    middlewares::api_middleware::api_key_middleware,
-    routes::fallback::{fallback, not_allowed}
+    configs::db, controllers::user_controller::{delete_user, edit_user, get_all_user, get_user, get_user_edit, insert_user}, middlewares::api_middleware::api_key_middleware, routes::fallback::{fallback, not_allowed}
 };
 
 /// =======================

@@ -1,11 +1,16 @@
 use std::borrow::Cow;
+use argon2::{PasswordHash, PasswordVerifier};
 use argon2::password_hash::Error as PasswordHashError;
 use argon2::{Argon2, password_hash::{SaltString, rand_core::OsRng, PasswordHasher}};
+use chrono::{Duration, Utc};
 use config::{Config, File, FileFormat};
+use jsonwebtoken::{EncodingKey, Header, encode};
 use validator::ValidationError;
+
 
 use crate::errors::app_error::AppError;
 use crate::models::config_model::AppConfig;
+use crate::models::user_model::{Claims};
 
 //untuk hashing password menggunakan argon2
 pub async fn hashing_password(password:&str)->Result<String,PasswordHashError>{
@@ -53,4 +58,31 @@ pub fn load_config() -> Result<AppConfig, AppError> {
         .build()?
         .try_deserialize()?;
     Ok(config)
+}
+
+pub fn create_jwt(user_id: u64) -> Result<String, AppError> {
+    let conf = load_config()?;
+    let expiration = Utc::now()
+        .checked_add_signed(Duration::hours(24))
+        .expect("Valid TimeStamp")
+        .timestamp();
+
+    let claims = Claims{
+        sub: user_id.to_owned(),
+        exp: expiration,
+    };
+
+    let encoded = encode(&Header::default(), &claims, &EncodingKey::from_secret(conf.jwt_secret.as_ref()))?;
+    Ok(encoded)
+}
+
+pub async fn verify_password(hash: &str, password: &str) -> Result<bool, AppError> {
+    let parsed_hash = PasswordHash::new(hash)
+        .map_err(|_|AppError::Unauthorized)?;
+
+    let is_valid = Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok();
+
+    Ok(is_valid)
 }

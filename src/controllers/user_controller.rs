@@ -1,7 +1,8 @@
 use axum::{Json, extract::{ Path, Query}};
+use axum_extra::extract::{CookieJar, cookie::Cookie};
 use http::{ StatusCode};
 use validator::Validate;
-use crate::{configs::db, errors::app_error::AppError, models::user_model::{SeacrhBy, SearchQuery, User, UserInsert, UserQuery, UserUpdate}, utils::utils::{check_email, hashing_password}};
+use crate::{configs::db, errors::app_error::AppError, models::user_model::{SeacrhBy, SearchQuery, User, UserInsert, UserLogin, UserQuery, UserUpdate}, utils::utils::{check_email, create_jwt, hashing_password, verify_password}};
 
 pub async fn get_all_user()-> Result<(StatusCode, Json<Vec<User>>), AppError> {
     let pool = db::get_pool().await?;
@@ -95,4 +96,35 @@ pub async fn edit_user(Path(id): Path<u64>, payload: Json<UserUpdate>) -> Result
         .await?;
 
     Ok((StatusCode::OK, Json(result)))
+}
+
+pub async fn login_user(payload:Json<UserLogin>)-> Result<(StatusCode, CookieJar), AppError>{
+    payload.validate().map_err(AppError::ValidationError)?;
+    let pool = db::get_pool().await?;
+    let email = payload.email.trim();
+    let password = payload.password.trim();
+
+    match check_email(email).await? {
+        false => return Err(AppError::NotFound),
+        _ => (),
+    }
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = ?")
+        .bind(email)
+        .fetch_one(&pool).await?;
+
+    if !verify_password(&user.password, password).await? {
+        return Err(AppError::Unauthorized);
+    }
+
+    let token = create_jwt(user.id)?;
+
+    let cookie = Cookie::build(token)
+        .http_only(true)
+        .secure(true)
+        .build();
+
+    let jar = CookieJar::new().add(cookie);
+    Ok((StatusCode::OK, jar))
+
 }

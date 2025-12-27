@@ -17,6 +17,12 @@ pub enum AppError {
     #[error("Config error: {0}")]
     ConfigError(#[from] config::ConfigError),
 
+    #[error("Chrono error: {0}")]
+    ChronoError(#[from] chrono::ParseError),
+
+    #[error("JWT error: {0}")]
+    JwtError(#[from] jsonwebtoken::errors::Error),
+
     #[error("Data not found")]
     NotFound,
 
@@ -67,6 +73,14 @@ impl IntoResponse for AppError {
             AppError::ConfigError(e) => {
                 eprintln!("Config ERROR: {:?}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, "Configuration error").into_response()
+            }
+            AppError::ChronoError(e) => {
+                eprintln!("Chrono ERROR: {:?}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Chrono error").into_response()
+            }
+            AppError::JwtError(e) => {
+                eprintln!("JWT ERROR: {:?}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "JWT error").into_response()
             }
         }
     }

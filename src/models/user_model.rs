@@ -11,7 +11,7 @@ pub struct User{
     pub email : String,
     #[allow(dead_code)]
     #[serde(skip_serializing)]
-    password: String,
+    pub password: String,
     #[serde(with = "chrono::serde::ts_milliseconds")]
     pub created_at: DateTime<Utc>,
     #[serde(with = "chrono::serde::ts_milliseconds")]
@@ -22,6 +22,14 @@ pub struct User{
 pub struct UserInsert{
     #[validate(length(min = 3, message = "Nama minimal 3 karakter"))]
     pub name: String,
+    #[validate(custom(function = "crate::utils::utils::validate_email_tld"))]
+    pub email : String,
+    #[validate(length(min = 5, message = "Password minimal 5 karakter"))]
+    pub password: String,
+}
+
+#[derive(Deserialize, Validate, Debug,Serialize)]
+pub struct UserLogin{
     #[validate(custom(function = "crate::utils::utils::validate_email_tld"))]
     pub email : String,
     #[validate(length(min = 5, message = "Password minimal 5 karakter"))]
@@ -53,4 +61,10 @@ pub struct SearchQuery {
 #[derive(Deserialize)]
 pub struct UserQuery {
     pub id: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Claims{
+    pub sub: u64,
+    pub exp: i64,
 }

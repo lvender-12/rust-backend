@@ -18,5 +18,8 @@ pub struct ServerConfig {
 pub struct AppConfig {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
+    pub jwt_secret: String,
 }
+
+
     
