@@ -1,7 +1,7 @@
-use axum::{Json, extract::Path};
+use axum::{Json, extract::{ Path, Query}};
 use http::{ StatusCode};
 use validator::Validate;
-use crate::{configs::db, errors::app_error::AppError, models::user_model::{SeacrhBy, SearchQuery, User, UserInsert}, utils::utils::{check_email, hashing_password}};
+use crate::{configs::db, errors::app_error::AppError, models::user_model::{SeacrhBy, SearchQuery, User, UserInsert, UserQuery, UserUpdate}, utils::utils::{check_email, hashing_password}};
 
 pub async fn get_all_user()-> Result<(StatusCode, Json<Vec<User>>), AppError> {
     let pool = db::get_pool().await?;
@@ -51,10 +51,10 @@ pub async fn get_user(payload: Json<SearchQuery>) -> Result<(StatusCode, Json<Ve
     Ok((StatusCode::OK, Json(result_vec)))
 }
 
-pub async fn delete_user(Path(user_email): Path<String>)-> Result<(StatusCode, Json<String>), AppError> {
+pub async fn delete_user(Query(user_query): Query<UserQuery>)-> Result<(StatusCode, Json<String>), AppError> {
     let pool = db::get_pool().await?;
-    let result = sqlx::query("DELETE FROM users WHERE email = ?")
-        .bind(user_email)
+    let result = sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(user_query.id)
         .execute(&pool)
         .await?;
 
@@ -63,4 +63,36 @@ pub async fn delete_user(Path(user_email): Path<String>)-> Result<(StatusCode, J
     }
 
     Ok((StatusCode::NO_CONTENT, Json("User deleted successfully".to_string())))
+}
+
+pub async fn get_user_edit(Query(user_query): Query<UserQuery>) -> Result<(StatusCode, Json<User>), AppError> {
+    let pool = db::get_pool().await?;
+    let result = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+        .bind(user_query.id)
+        .fetch_one(&pool)
+        .await?;
+
+    Ok((StatusCode::OK, Json(result)))
+}
+
+pub async fn edit_user(Path(id): Path<u64>, payload: Json<UserUpdate>) -> Result<(StatusCode, Json<User>), AppError> {
+    payload.validate().map_err(AppError::ValidationError)?;
+
+    let pool = db::get_pool().await?;
+    let email = payload.email.trim();
+    let name = payload.name.trim();
+
+    sqlx::query("UPDATE users SET name = ?, email = ? WHERE id = ?")
+        .bind(name)
+        .bind(email)
+        .bind(id)
+        .execute(&pool)
+        .await?;
+
+    let result = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+        .bind(id)
+        .fetch_one(&pool)
+        .await?;
+
+    Ok((StatusCode::OK, Json(result)))
 }

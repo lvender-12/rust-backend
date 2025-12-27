@@ -28,6 +28,15 @@ pub struct UserInsert{
     pub password: String,
 }
 
+#[derive(Deserialize, Validate, Debug,Serialize)]
+pub struct UserUpdate{
+    #[validate(length(min = 3, message = "Nama minimal 3 karakter"))]
+    pub name: String,
+    #[validate(custom(function = "crate::utils::utils::validate_email_tld"))]
+    pub email : String,
+}
+
+
 #[derive(Deserialize, Debug,Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SeacrhBy {
@@ -39,4 +48,9 @@ pub enum SeacrhBy {
 pub struct SearchQuery {
     pub by: SeacrhBy,
     pub value: String,
+}
+
+#[derive(Deserialize)]
+pub struct UserQuery {
+    pub id: u64,
 }
