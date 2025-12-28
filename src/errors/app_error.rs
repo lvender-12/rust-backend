@@ -23,6 +23,9 @@ pub enum AppError {
     #[error("JWT error: {0}")]
     JwtError(#[from] jsonwebtoken::errors::Error),
 
+    #[error("Cookie error")]
+    CookieError,
+
     #[error("Data not found")]
     NotFound,
 
@@ -37,6 +40,9 @@ pub enum AppError {
 
     #[error("Conflict")]
     Conflict,
+
+    #[error("Forbidden access")]
+    Forbidden,
 
 }
 
@@ -81,6 +87,13 @@ impl IntoResponse for AppError {
             AppError::JwtError(e) => {
                 eprintln!("JWT ERROR: {:?}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, "JWT error").into_response()
+            }
+            AppError::CookieError => {
+                eprintln!("Cookie ERROR");
+                (StatusCode::INTERNAL_SERVER_ERROR, "Cookie error").into_response()
+            }
+            AppError::Forbidden => {
+                (StatusCode::FORBIDDEN, "Forbidden access").into_response()
             }
         }
     }

@@ -4,7 +4,7 @@ use argon2::password_hash::Error as PasswordHashError;
 use argon2::{Argon2, password_hash::{SaltString, rand_core::OsRng, PasswordHasher}};
 use chrono::{Duration, Utc};
 use config::{Config, File, FileFormat};
-use jsonwebtoken::{EncodingKey, Header, encode};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, decode, encode};
 use validator::ValidationError;
 
 
@@ -85,4 +85,17 @@ pub async fn verify_password(hash: &str, password: &str) -> Result<bool, AppErro
         .is_ok();
 
     Ok(is_valid)
+}
+
+pub async fn jwt_verify(token: &str) -> Result<Claims, AppError> {
+    let conf = load_config()?;
+    let decoding_key = DecodingKey::from_secret(conf.jwt_secret.as_ref());
+
+    let token_data = decode::<Claims>(
+        token,
+        &decoding_key,
+        &jsonwebtoken::Validation::default()
+    ).map_err(|_| AppError::Unauthorized)?; // error kalau token invalid
+
+    Ok(token_data.claims)
 }

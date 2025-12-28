@@ -119,12 +119,7 @@ pub async fn login_user(payload:Json<UserLogin>)-> Result<(StatusCode, CookieJar
 
     let token = create_jwt(user.id)?;
 
-    let cookie = Cookie::build(token)
-        .http_only(true)
-        .secure(true)
-        .build();
-
-    let jar = CookieJar::new().add(cookie);
+    let jar = CookieJar::new().add(Cookie::new("jwt", token));
     Ok((StatusCode::OK, jar))
 
 }

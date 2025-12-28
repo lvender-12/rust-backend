@@ -63,7 +63,7 @@ pub struct UserQuery {
     pub id: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Claims{
     pub sub: u64,
     pub exp: i64,
