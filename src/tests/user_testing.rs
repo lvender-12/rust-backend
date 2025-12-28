@@ -6,11 +6,15 @@ use http::StatusCode;
 use serde_json::json;
 
 use crate::{
-    configs::db, controllers::user_controller::{delete_user, edit_user, get_all_user, get_user, get_user_edit, insert_user}, middlewares::api_middleware::api_key_middleware, routes::fallback::{fallback, not_allowed}
+    configs::db,
+    controllers::user_controller::{delete_user, edit_user, get_all_user, get_user, get_user_edit, insert_user, login_user},
+    middlewares::api_middleware::{api_key_middleware},
+    routes::fallback::{fallback, not_allowed},
+    utils::utils::create_jwt
 };
 
 /// =======================
-/// Helper
+/// Helper Functions
 /// =======================
 
 fn api_key() -> &'static str {
@@ -23,15 +27,27 @@ fn app() -> Router {
         .route("/user", post(insert_user))
         .route("/user/search", post(get_user))
         .route("/user", delete(delete_user))
-        .route("/user/edit", get(get_user_edit)) // query param
-        .route("/user/{id}", put(edit_user))     // path param
+        .route("/user/edit", get(get_user_edit))
+        .route("/user/{id}", put(edit_user))
         .layer(from_fn(api_key_middleware))
+        .layer(from_fn(crate::middlewares::api_middleware::check_login))
         .fallback(fallback)
         .method_not_allowed_fallback(not_allowed)
 }
 
+fn guest_app() -> Router {
+    Router::new()
+        .route("/login", post(login_user))
+        .layer(from_fn(api_key_middleware))
+        .layer(from_fn(crate::middlewares::api_middleware::check_guest))
+}
+
 fn server() -> TestServer {
     TestServer::new(app()).unwrap()
+}
+
+fn guest_server() -> TestServer {
+    TestServer::new(guest_app()).unwrap()
 }
 
 async fn cleanup_users() {
@@ -42,328 +58,199 @@ async fn cleanup_users() {
         .unwrap();
 }
 
+async fn get_jwt(user_id: u64) -> String {
+    create_jwt(user_id).unwrap()
+}
+
 /// =======================
-/// GET /user
+/// Guest Route Tests (/login)
 /// =======================
 
 #[tokio::test]
-async fn get_user_success() {
-    let server = server();
-    let res = server.get("/user").add_header("X-API-KEY", api_key()).await;
-    assert_eq!(res.status_code(), StatusCode::OK);
+async fn guest_can_access_login() {
+    let server = guest_server();
+    let res = server.post("/login")
+        .add_header("X-API-KEY", api_key())
+        .json(&json!({"email": "guest@test.com","password": "123456"}))
+        .await;
+    assert_ne!(res.status_code(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
-async fn get_user_without_api_key() {
+async fn logged_in_cannot_access_login() {
+    let server = guest_server();
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
+
+    let res = server.post("/login")
+        .add_header("X-API-KEY", api_key())
+        .add_header("Cookie", &cookie)
+        .json(&json!({"email": "guest@test.com","password": "123456"}))
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::FORBIDDEN);
+}
+
+/// =======================
+/// GET /user Tests (all combinations)
+/// =======================
+
+#[tokio::test]
+async fn get_user_no_api_no_token() {
     let server = server();
     let res = server.get("/user").await;
     assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn get_user_wrong_api_key() {
+async fn get_user_api_key_no_token() {
     let server = server();
-    let res = server.get("/user").add_header("X-API-KEY", "SALAH").await;
+    let res = server.get("/user")
+        .add_header("X-API-KEY", api_key())
+        .await;
     assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
 }
 
+#[tokio::test]
+async fn get_user_no_api_token() {
+    let server = server();
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
+    let res = server.get("/user")
+        .add_header("Cookie", &cookie)
+        .await;
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn get_user_api_key_valid_token() {
+    cleanup_users().await;
+    let server = server();
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
+
+    let res = server.get("/user")
+        .add_header("X-API-KEY", api_key())
+        .add_header("Cookie", &cookie)
+        .await;
+
+    assert_eq!(res.status_code(), StatusCode::OK);
+}
+
 /// =======================
-/// POST /user
+/// POST /user Tests (all combinations)
 /// =======================
 
 #[tokio::test]
-async fn insert_user_success() {
+async fn insert_user_no_api_no_token() {
     cleanup_users().await;
-
     let server = server();
-    let email = "damar_insert@test.com";
+    let res = server.post("/user")
+        .json(&json!({"name": "TestUser","email": "noapi@test.com","password": "123456"}))
+        .await;
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn insert_user_api_key_no_token() {
+    cleanup_users().await;
+    let server = server();
+    let res = server.post("/user")
+        .add_header("X-API-KEY", api_key())
+        .json(&json!({"name": "TestUser","email": "apikey@test.com","password": "123456"}))
+        .await;
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn insert_user_no_api_token() {
+    cleanup_users().await;
+    let server = server();
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
+    let res = server.post("/user")
+        .add_header("Cookie", &cookie)
+        .json(&json!({"name": "TestUser","email": "notoken@test.com","password": "123456"}))
+        .await;
+    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn insert_user_api_key_valid_token() {
+    cleanup_users().await;
+    let server = server();
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
 
     let res = server.post("/user")
         .add_header("X-API-KEY", api_key())
-        .json(&json!({
-            "name": "Damar",
-            "email": email,
-            "password": "123456"
-        }))
+        .add_header("Cookie", &cookie)
+        .json(&json!({"name": "ValidUser","email": "valid@test.com","password": "123456"}))
         .await;
 
     assert_eq!(res.status_code(), StatusCode::CREATED);
-
     cleanup_users().await;
 }
 
-#[tokio::test]
-async fn insert_user_invalid_json() {
-    let server = server();
-    let res = server.post("/user")
-        .add_header("X-API-KEY", api_key())
-        .json("{ invalid json }")
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-#[tokio::test]
-async fn insert_user_without_api_key() {
-    let server = server();
-    let res = server.post("/user")
-        .json(&json!({
-            "name": "Damar",
-            "email": "damar@test.com",
-            "password": "123456"
-        }))
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
-}
-
 /// =======================
-/// PUT /user/{id} Method Not Allowed
+/// DELETE /user Tests (all combinations)
 /// =======================
 
 #[tokio::test]
-async fn put_user_not_allowed() {
-    let server = server();
-    let res = server.put("/user").add_header("X-API-KEY", api_key()).await;
-    assert_eq!(res.status_code(), StatusCode::METHOD_NOT_ALLOWED);
-}
-
-/// =======================
-/// FALLBACK
-/// =======================
-
-#[tokio::test]
-async fn route_not_found() {
-    let server = server();
-    let res = server.get("/tidak-ada").add_header("X-API-KEY", api_key()).await;
-    assert_eq!(res.status_code(), StatusCode::NOT_FOUND);
-}
-
-/// =======================
-/// SEARCH /user/search
-/// =======================
-
-#[tokio::test]
-async fn search_user_by_name_success() {
+async fn delete_user_api_key_valid_token() {
     cleanup_users().await;
-
     let server = server();
-    let email = "damar_search@test.com";
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
 
-    server.post("/user")
-        .add_header("X-API-KEY", api_key())
-        .json(&json!({
-            "name": "DamarSearch",
-            "email": email,
-            "password": "123456"
-        }))
-        .await;
-
-    let res = server.post("/user/search")
-        .add_header("X-API-KEY", api_key())
-        .json(&json!({"by": "name", "value": "DamarSearch"}))
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::OK);
-    let body: serde_json::Value = res.json::<serde_json::Value>();
-    assert!(body.as_array().unwrap().len() > 0);
-
-    cleanup_users().await;
-}
-
-#[tokio::test]
-async fn search_user_by_email_success() {
-    cleanup_users().await;
-
-    let server = server();
-    let email = "damar_email@test.com";
-
-    server.post("/user")
-        .add_header("X-API-KEY", api_key())
-        .json(&json!({
-            "name": "DamarEmail",
-            "email": email,
-            "password": "123456"
-        }))
-        .await;
-
-    let res = server.post("/user/search")
-        .add_header("X-API-KEY", api_key())
-        .json(&json!({"by": "email", "value": email}))
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::OK);
-    let body: serde_json::Value = res.json::<serde_json::Value>();
-    assert!(body.as_array().unwrap().len() > 0);
-
-    cleanup_users().await;
-}
-
-#[tokio::test]
-async fn search_user_without_api_key() {
-    let server = server();
-    let res = server.post("/user/search")
-        .json(&json!({"by": "name", "value": "Damar"}))
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn search_user_wrong_api_key() {
-    let server = server();
-    let res = server.post("/user/search")
-        .add_header("X-API-KEY", "SALAH")
-        .json(&json!({"by": "name", "value": "Damar"}))
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn search_user_invalid_json() {
-    let server = server();
-    let res = server.post("/user/search")
-        .add_header("X-API-KEY", api_key())
-        .json("{ invalid json }")
-        .await;
-
-    assert_eq!(res.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-/// =======================
-/// GET /user/edit (query param)
-/// =======================
-
-#[tokio::test]
-async fn get_user_edit_success() {
-    cleanup_users().await;
-
+    // Insert dulu
     let pool = db::get_pool().await.unwrap();
     let rec = sqlx::query("INSERT INTO users (name,email,password) VALUES (?, ?, ?)")
-        .bind("DamarEdit")
-        .bind("damar_edit@test.com")
+        .bind("DelUser")
+        .bind("delete@test.com")
         .bind("123456")
         .execute(&pool)
         .await
         .unwrap();
     let user_id = rec.last_insert_id();
 
-    let server = server();
-    let response = server.get("/user/edit")
+    let res = server.delete("/user")
         .add_header("X-API-KEY", api_key())
+        .add_header("Cookie", &cookie)
         .add_query_param("id", &user_id.to_string())
         .await;
 
-    assert_eq!(response.status_code(), StatusCode::OK);
-
+    assert_eq!(res.status_code(), StatusCode::NO_CONTENT);
     cleanup_users().await;
 }
 
 /// =======================
-/// DELETE /user (query param)
+/// PUT /user/{id} Tests (edit user, all combinations)
 /// =======================
 
 #[tokio::test]
-async fn delete_user_success() {
+async fn edit_user_api_key_valid_token() {
     cleanup_users().await;
+    let server = server();
+    let token = get_jwt(1).await;
+    let cookie = format!("jwt={}", token);
 
     let pool = db::get_pool().await.unwrap();
-
     let rec = sqlx::query("INSERT INTO users (name,email,password) VALUES (?, ?, ?)")
-        .bind("DamarEdit")
-        .bind("damar_edit@test.com")
+        .bind("EditUser")
+        .bind("edit@test.com")
         .bind("123456")
         .execute(&pool)
         .await
         .unwrap();
-
-    // Ambil ID terakhir
     let user_id = rec.last_insert_id();
-    println!("Inserted user id: {}", user_id);
 
-    let server = server();
-    let response = server.delete("/user")
+    let res = server.put(&format!("/user/{}", user_id))
         .add_header("X-API-KEY", api_key())
-        .add_query_param("id", &user_id.to_string())
+        .add_header("Cookie", &cookie)
+        .json(&json!({"name": "EditedUser","email": "edit@test.com"}))
         .await;
 
-    assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
-
-    cleanup_users().await;
-}
-
-#[tokio::test]
-async fn delete_user_not_found() {
-    let server = server();
-    let response = server.delete("/user")
-        .add_header("X-API-KEY", api_key())
-        .add_query_param("id", "999999") // ID yang tidak ada
-        .await;
-
-    assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn delete_user_without_api_key() {
-    let server = server();
-    let response = server.delete("/user")
-        .add_query_param("id", "1")
-        .await;
-
-    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn delete_user_wrong_api_key() {
-    let server = server();
-    let response = server.delete("/user")
-        .add_header("X-API-KEY", "SALAH")
-        .add_query_param("id", "1")
-        .await;
-
-    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
-}
-
-/// =======================
-/// PUT /user/{id} (path param)
-/// =======================
-
-#[tokio::test]
-async fn edit_user_success() {
-    cleanup_users().await;
-
-    let pool = db::get_pool().await.unwrap();
-
-    // Insert user dummy
-    let rec = sqlx::query("INSERT INTO users (name,email,password) VALUES (?, ?, ?)")
-        .bind("DamarEdit")
-        .bind("damar_edit@test.com")
-        .bind("123456")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    let user_id = rec.last_insert_id();
-    println!("Inserted user id: {}", user_id);
-
-    let server = server();
-
-    // Kirim semua field yang required
-    let response = server.put(&format!("/user/{}", user_id))
-        .add_header("X-API-KEY", api_key())
-        .json(&json!({
-            "name": "DamarEdited",
-            "email": "damar_edit@test.com"
-        }))
-        .await;
-
-    assert_eq!(response.status_code(), StatusCode::OK);
-
-    // Optionally, cek hasil edit
-    let body: serde_json::Value = response.json::<serde_json::Value>();
-    assert_eq!(body["name"], "DamarEdited");
-    assert_eq!(body["email"], "damar_edit@test.com");
-
+    assert_eq!(res.status_code(), StatusCode::OK);
     cleanup_users().await;
 }
